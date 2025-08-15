@@ -1,0 +1,689 @@
+import React, { useState, useRef } from 'react';
+import { Plus, Edit, Trash2, Play, Home, Check, X, Download, Upload } from 'lucide-react';
+
+const QuizCreatorApp = () => {
+  const fileInputRef = useRef(null);
+  const textFileInputRef = useRef(null);
+  
+  const [questions, setQuestions] = useState([
+    {
+      id: 1,
+      question: "日本の首都はどこですか？",
+      options: ["大阪", "京都", "東京", "名古屋", "福岡"],
+      correctAnswer: 2
+    },
+    {
+      id: 2,
+      question: "地球から最も近い恒星は？",
+      options: ["月", "太陽", "火星", "金星", "木星"],
+      correctAnswer: 1
+    }
+  ]);
+  
+  const [currentView, setCurrentView] = useState('home');
+  const [editingQuestion, setEditingQuestion] = useState(null);
+  const [quizState, setQuizState] = useState({
+    currentQuestionIndex: 0,
+    selectedAnswers: [],
+    showResults: false,
+    score: 0
+  });
+
+  const [newQuestion, setNewQuestion] = useState({
+    question: '',
+    options: ['', '', '', '', ''],
+    correctAnswer: 0
+  });
+
+  const resetNewQuestion = () => {
+    setNewQuestion({
+      question: '',
+      options: ['', '', '', '', ''],
+      correctAnswer: 0
+    });
+  };
+
+  const handleCreateQuestion = () => {
+    if (newQuestion.question.trim() && newQuestion.options.every(opt => opt.trim())) {
+      const question = {
+        id: Date.now(),
+        ...newQuestion
+      };
+      setQuestions([...questions, question]);
+      resetNewQuestion();
+      setCurrentView('home');
+    }
+  };
+
+  const handleEditQuestion = (question) => {
+    setEditingQuestion(question);
+    setNewQuestion({
+      question: question.question,
+      options: [...question.options],
+      correctAnswer: question.correctAnswer
+    });
+    setCurrentView('edit');
+  };
+
+  const handleUpdateQuestion = () => {
+    if (newQuestion.question.trim() && newQuestion.options.every(opt => opt.trim())) {
+      setQuestions(questions.map(q => 
+        q.id === editingQuestion.id 
+          ? { ...editingQuestion, ...newQuestion }
+          : q
+      ));
+      resetNewQuestion();
+      setEditingQuestion(null);
+      setCurrentView('home');
+    }
+  };
+
+  const handleDeleteQuestion = (id) => {
+    setQuestions(questions.filter(q => q.id !== id));
+  };
+
+  const startQuiz = () => {
+    if (questions.length > 0) {
+      setQuizState({
+        currentQuestionIndex: 0,
+        selectedAnswers: [],
+        showResults: false,
+        score: 0
+      });
+      setCurrentView('quiz');
+    }
+  };
+
+  const handleQuizAnswer = (answerIndex) => {
+    const newSelectedAnswers = [...quizState.selectedAnswers];
+    newSelectedAnswers[quizState.currentQuestionIndex] = answerIndex;
+    
+    if (quizState.currentQuestionIndex < questions.length - 1) {
+      setQuizState({
+        ...quizState,
+        selectedAnswers: newSelectedAnswers,
+        currentQuestionIndex: quizState.currentQuestionIndex + 1
+      });
+    } else {
+      const finalScore = newSelectedAnswers.reduce((score, answer, index) => {
+        return score + (answer === questions[index].correctAnswer ? 1 : 0);
+      }, 0);
+      
+      setQuizState({
+        ...quizState,
+        selectedAnswers: newSelectedAnswers,
+        showResults: true,
+        score: finalScore
+      });
+    }
+  };
+
+  const resetQuiz = () => {
+    setQuizState({
+      currentQuestionIndex: 0,
+      selectedAnswers: [],
+      showResults: false,
+      score: 0
+    });
+    setCurrentView('home');
+  };
+
+  const exportQuestions = () => {
+    const dataToExport = {
+      version: "1.0",
+      exportDate: new Date().toISOString(),
+      questions: questions
+    };
+    
+    const dataStr = JSON.stringify(dataToExport, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `quiz-questions-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportQuestionsAsText = () => {
+    let textContent = "# クイズ問題集\n";
+    textContent += `# 作成日: ${new Date().toLocaleDateString('ja-JP')}\n`;
+    textContent += `# 問題数: ${questions.length}問\n\n`;
+    textContent += "# ========================================\n";
+    textContent += "# 形式の説明:\n";
+    textContent += "# Q: 問題文\n";
+    textContent += "# 1. 選択肢1\n";
+    textContent += "# 2. 選択肢2\n";
+    textContent += "# 3. 選択肢3\n";
+    textContent += "# 4. 選択肢4\n";
+    textContent += "# 5. 選択肢5\n";
+    textContent += "# A: 正解番号（1-5）\n";
+    textContent += "# ========================================\n\n";
+
+    questions.forEach((question, index) => {
+      textContent += `# 問題${index + 1}\n`;
+      textContent += `Q: ${question.question}\n`;
+      question.options.forEach((option, optIndex) => {
+        textContent += `${optIndex + 1}. ${option}\n`;
+      });
+      textContent += `A: ${question.correctAnswer + 1}\n\n`;
+    });
+
+    const dataBlob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(dataBlob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `quiz-questions-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const importQuestions = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedData = JSON.parse(e.target.result);
+        
+        if (importedData.questions && Array.isArray(importedData.questions)) {
+          const validQuestions = importedData.questions.filter(q => 
+            q.question && 
+            q.options && 
+            Array.isArray(q.options) && 
+            q.options.length === 5 &&
+            typeof q.correctAnswer === 'number' &&
+            q.correctAnswer >= 0 && 
+            q.correctAnswer < 5
+          );
+
+          if (validQuestions.length > 0) {
+            const questionsWithNewIds = validQuestions.map((q, index) => ({
+              ...q,
+              id: Date.now() + index
+            }));
+            
+            setQuestions(questionsWithNewIds);
+            alert(`${validQuestions.length}問のクイズが正常にインポートされました！`);
+          } else {
+            alert('有効な問題データが見つかりませんでした。');
+          }
+        } else {
+          alert('無効なファイル形式です。');
+        }
+      } catch (error) {
+        alert('ファイルの読み込みに失敗しました。正しいJSONファイルを選択してください。');
+      }
+    };
+    
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
+  const importQuestionsFromText = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const lines = text.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
+        
+        const importedQuestions = [];
+        let currentQuestion = null;
+        let optionCount = 0;
+        
+        for (let line of lines) {
+          if (line.startsWith('Q:')) {
+            if (currentQuestion && currentQuestion.options.length === 5 && currentQuestion.correctAnswer !== null) {
+              importedQuestions.push(currentQuestion);
+            }
+            currentQuestion = {
+              id: Date.now() + importedQuestions.length,
+              question: line.substring(2).trim(),
+              options: [],
+              correctAnswer: null
+            };
+            optionCount = 0;
+          } else if (line.match(/^[1-5]\./)) {
+            if (currentQuestion && optionCount < 5) {
+              const option = line.substring(2).trim();
+              currentQuestion.options.push(option);
+              optionCount++;
+            }
+          } else if (line.startsWith('A:')) {
+            if (currentQuestion) {
+              const answer = parseInt(line.substring(2).trim());
+              if (answer >= 1 && answer <= 5) {
+                currentQuestion.correctAnswer = answer - 1;
+              }
+            }
+          }
+        }
+        
+        if (currentQuestion && currentQuestion.options.length === 5 && currentQuestion.correctAnswer !== null) {
+          importedQuestions.push(currentQuestion);
+        }
+        
+        if (importedQuestions.length > 0) {
+          setQuestions(importedQuestions);
+          alert(`${importedQuestions.length}問のクイズが正常にインポートされました！`);
+        } else {
+          alert('有効な問題データが見つかりませんでした。形式を確認してください。');
+        }
+      } catch (error) {
+        alert('ファイルの読み込みに失敗しました。テキストファイルを選択してください。');
+      }
+    };
+    
+    reader.readAsText(file, 'UTF-8');
+    event.target.value = '';
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current.click();
+  };
+
+  const handleTextImportClick = () => {
+    textFileInputRef.current.click();
+  };
+
+  if (currentView === 'home') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-4xl font-bold text-center text-indigo-800 mb-8">
+            オリジナル5択クイズ作成アプリ
+          </h1>
+          
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
+              <h2 className="text-2xl font-semibold text-gray-800">問題一覧 ({questions.length}問)</h2>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => setCurrentView('create')}
+                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                >
+                  <Plus size={20} />
+                  <span>問題を追加</span>
+                </button>
+                <button
+                  onClick={startQuiz}
+                  disabled={questions.length === 0}
+                  className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                >
+                  <Play size={20} />
+                  <span>クイズ開始</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <h3 className="text-lg font-medium text-gray-700 mb-3">データ管理</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-600 mb-2">エクスポート（保存）</h4>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={exportQuestions}
+                      disabled={questions.length === 0}
+                      className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-400 text-white px-3 py-2 rounded text-sm flex items-center space-x-1 transition-colors"
+                    >
+                      <Download size={16} />
+                      <span>JSON</span>
+                    </button>
+                    <button
+                      onClick={exportQuestionsAsText}
+                      disabled={questions.length === 0}
+                      className="bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-400 text-white px-3 py-2 rounded text-sm flex items-center space-x-1 transition-colors"
+                    >
+                      <Download size={16} />
+                      <span>テキスト</span>
+                    </button>
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 className="text-sm font-medium text-gray-600 mb-2">インポート（読み込み）</h4>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={handleImportClick}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded text-sm flex items-center space-x-1 transition-colors"
+                    >
+                      <Upload size={16} />
+                      <span>JSON</span>
+                    </button>
+                    <button
+                      onClick={handleTextImportClick}
+                      className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-2 rounded text-sm flex items-center space-x-1 transition-colors"
+                    >
+                      <Upload size={16} />
+                      <span>テキスト</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={importQuestions}
+                className="hidden"
+              />
+              <input
+                ref={textFileInputRef}
+                type="file"
+                accept=".txt"
+                onChange={importQuestionsFromText}
+                className="hidden"
+              />
+              
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                <p><strong>💡 おすすめ：</strong> テキスト形式なら、メモ帳やWordで簡単に問題を編集できます！</p>
+                <p><strong>JSON形式：</strong> データの完全性重視 | <strong>テキスト形式：</strong> 編集の簡単さ重視</p>
+              </div>
+            </div>
+          
+            {questions.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p className="text-lg">まだ問題がありません</p>
+                <p>「問題を追加」ボタンから新しい問題を作成するか、</p>
+                <p>「インポート」ボタンで既存の問題データを読み込みましょう！</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {questions.map((question, index) => (
+                  <div key={question.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-800 mb-2">
+                          問{index + 1}: {question.question}
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                          {question.options.map((option, optIndex) => (
+                            <div 
+                              key={optIndex} 
+                              className={`p-2 rounded ${
+                                optIndex === question.correctAnswer 
+                                  ? 'bg-green-100 text-green-800 font-medium' 
+                                  : 'bg-gray-50 text-gray-600'
+                              }`}
+                            >
+                              {optIndex + 1}. {option}
+                              {optIndex === question.correctAnswer && (
+                                <span className="ml-2">✓</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex space-x-2 ml-4">
+                        <button
+                          onClick={() => handleEditQuestion(question)}
+                          className="text-blue-500 hover:text-blue-700 p-1"
+                          title="編集"
+                        >
+                          <Edit size={18} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteQuestion(question.id)}
+                          className="text-red-500 hover:text-red-700 p-1"
+                          title="削除"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'create' || currentView === 'edit') {
+    const isEditing = currentView === 'edit';
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-semibold text-gray-800">
+                {isEditing ? '問題を編集' : '新しい問題を作成'}
+              </h2>
+              <button
+                onClick={() => {
+                  resetNewQuestion();
+                  setEditingQuestion(null);
+                  setCurrentView('home');
+                }}
+                className="text-gray-500 hover:text-gray-700"
+                title="ホームに戻る"
+              >
+                <Home size={24} />
+              </button>
+            </div>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  問題文 *
+                </label>
+                <textarea
+                  value={newQuestion.question}
+                  onChange={(e) => setNewQuestion({...newQuestion, question: e.target.value})}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                  placeholder="問題文を入力してください"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  選択肢 *
+                </label>
+                {newQuestion.options.map((option, index) => (
+                  <div key={index} className="flex items-center space-x-3 mb-3">
+                    <input
+                      type="radio"
+                      name="correctAnswer"
+                      checked={newQuestion.correctAnswer === index}
+                      onChange={() => setNewQuestion({...newQuestion, correctAnswer: index})}
+                      className="text-blue-500"
+                    />
+                    <span className="text-sm font-medium text-gray-600 w-6">
+                      {index + 1}.
+                    </span>
+                    <input
+                      type="text"
+                      value={option}
+                      onChange={(e) => {
+                        const newOptions = [...newQuestion.options];
+                        newOptions[index] = e.target.value;
+                        setNewQuestion({...newQuestion, options: newOptions});
+                      }}
+                      className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={`選択肢${index + 1}`}
+                    />
+                    {newQuestion.correctAnswer === index && (
+                      <span className="text-green-500 font-medium">正解</span>
+                    )}
+                  </div>
+                ))}
+                <p className="text-xs text-gray-500 mt-2">
+                  正解の選択肢の左側のラジオボタンを選択してください
+                </p>
+              </div>
+              
+              <div className="flex space-x-4">
+                <button
+                  onClick={isEditing ? handleUpdateQuestion : handleCreateQuestion}
+                  disabled={!newQuestion.question.trim() || !newQuestion.options.every(opt => opt.trim())}
+                  className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white py-3 rounded-lg font-medium transition-colors"
+                >
+                  {isEditing ? '更新する' : '作成する'}
+                </button>
+                <button
+                  onClick={() => {
+                    resetNewQuestion();
+                    setEditingQuestion(null);
+                    setCurrentView('home');
+                  }}
+                  className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'quiz') {
+    if (quizState.showResults) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+              <h2 className="text-3xl font-bold text-gray-800 mb-6">クイズ結果</h2>
+              
+              <div className="mb-8">
+                <div className="text-6xl font-bold text-blue-500 mb-2">
+                  {quizState.score}
+                </div>
+                <div className="text-xl text-gray-600">
+                  {questions.length}問中 {quizState.score}問正解
+                </div>
+                <div className="text-2xl font-semibold mt-4">
+                  正答率: {Math.round((quizState.score / questions.length) * 100)}%
+                </div>
+              </div>
+              
+              <div className="mb-8 max-h-96 overflow-y-auto">
+                {questions.map((question, index) => (
+                  <div key={question.id} className="text-left border-b border-gray-200 py-4">
+                    <h3 className="font-medium text-gray-800 mb-2">
+                      問{index + 1}: {question.question}
+                    </h3>
+                    <div className="space-y-1">
+                      {question.options.map((option, optIndex) => {
+                        const isSelected = quizState.selectedAnswers[index] === optIndex;
+                        const isCorrect = question.correctAnswer === optIndex;
+                        
+                        return (
+                          <div 
+                            key={optIndex}
+                            className={`p-2 rounded text-sm ${
+                              isCorrect 
+                                ? 'bg-green-100 text-green-800' 
+                                : isSelected 
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-gray-50 text-gray-600'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span>{optIndex + 1}. {option}</span>
+                              <div className="flex items-center space-x-1">
+                                {isCorrect && <Check size={16} className="text-green-600" />}
+                                {isSelected && !isCorrect && <X size={16} className="text-red-600" />}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="flex flex-wrap justify-center gap-4">
+                <button
+                  onClick={startQuiz}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors"
+                >
+                  もう一度挑戦
+                </button>
+                <button
+                  onClick={resetQuiz}
+                  className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg transition-colors"
+                >
+                  ホームに戻る
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const currentQuestion = questions[quizState.currentQuestionIndex];
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="text-sm text-gray-500">
+                問題 {quizState.currentQuestionIndex + 1} / {questions.length}
+              </div>
+              <button
+                onClick={resetQuiz}
+                className="text-gray-500 hover:text-gray-700"
+                title="クイズを終了してホームに戻る"
+              >
+                <Home size={24} />
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+                <div 
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${((quizState.currentQuestionIndex + 1) / questions.length) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+            
+            <h2 className="text-2xl font-semibold text-gray-800 mb-8">
+              {currentQuestion.question}
+            </h2>
+            
+            <div className="space-y-4">
+              {currentQuestion.options.map((option, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleQuizAnswer(index)}
+                  className="w-full text-left p-4 border border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all duration-200"
+                >
+                  <span className="font-medium text-blue-600 mr-3">
+                    {index + 1}.
+                  </span>
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+export default QuizCreatorApp;
